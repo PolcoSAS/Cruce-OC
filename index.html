@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Los datos nunca salen del navegador: la CSP no permite conexiones a otros orígenes. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'self' blob:; frame-src 'self' blob:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Cruce OC vs Proveedor · Polco</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <img src="assets/logo.svg" alt="POLCO" class="logo">
+    <span class="sep"></span>
+    <span class="appname">Cruce de Órdenes de Compra · Proveedor</span>
+    <span class="grow"></span>
+    <button id="btnHistory" class="ghost">Histórico</button>
+  </div>
+</header>
+<main id="app"><p class="muted center">Cargando…</p></main>
+<footer class="foot">Los archivos se procesan en este navegador. No se envían a ningún servidor.</footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="vendor/exceljs.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
