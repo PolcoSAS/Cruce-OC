@@ -1,0 +1,16 @@
+{
+  "name": "polco-cruce-oc",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "exceljs": "^4.4.0",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "type": "module",
+  "private": true
+}
