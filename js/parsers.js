@@ -112,7 +112,105 @@ export const buchi = {
   },
 };
 
-export const SUPPLIER_PARSERS = [metrohm, buchi];
+
+// ---------- ERWEKA GmbH: "Order confirmation" (EUR, números 1,234.50) ----------
+const ENUM = "\\d[\\d,]*\\.\\d{2}";
+const ER_LINE = new RegExp(`^(?:(\\d{1,3})\\s+)?(\\S+)\\s+(\\d[\\d,]*(?:\\.\\d+)?)\\s+(${ENUM})\\s+(${ENUM})$`);
+export const erweka = {
+  id: "erweka", name: "ERWEKA GmbH",
+  matches: (L) => { const h = L.slice(0, 30).join("\n"); return /ERWEKA GmbH/i.test(h) && /Order confirmation/i.test(h); },
+  parse(L, pages) {
+    const d = newDoc("supplier", this.id, { supplierName: "ERWEKA GmbH", pages });
+    let page = 1, inTable = false, cur = null, n = 0, dispatch = "", m;
+    for (const raw of L) {
+      if ((m = raw.match(PAGE))) { page = +m[1] + 1; continue; }
+      const s = raw.trim(); if (!s) continue;
+      if (!d.number && (m = s.match(/^Order confirmation\s+(\d+)/i))) d.number = m[1];
+      if (!d.date && (m = s.match(/^Date\s+(\d{2}\/\d{2}\/\d{4})/))) d.date = m[1];
+      if ((m = s.match(/Purchase order number\s+(\S+)/i))) d.relatedPo = m[1];
+      if ((m = s.match(/^Ready for dispatch:\s*(\d{2}\/\d{2}\/\d{4})/i))) { dispatch = m[1]; d.lines.forEach(l => { l.deliveryDate = dispatch; }); continue; }
+      if (/^Item\s+Article\s+Qty\s+Unit price/i.test(s)) { inTable = true; continue; }
+      if (!inTable) continue;
+      if ((m = s.match(/^([A-Z]{3})\s+\1$/))) { d.currency = m[1]; continue; }
+      if ((m = s.match(new RegExp(`^Total\\s+(${ENUM})$`, "i")))) { d.declaredTotal = d.documentTotal = toCents(m[1], "."); inTable = false; cur = null; continue; }
+      if ((m = s.match(ER_LINE))) {
+        cur = line({ lineNo: ++n, reference: m[2], quantity: toQty(m[3], "."), unitPrice: toCents(m[4], "."), total: toCents(m[5], "."), raw: s, page, deliveryDate: dispatch });
+        d.lines.push(cur); continue;
+      }
+      if (cur) { cur.description = (cur.description + " " + s).trim(); continue; }
+      if (new RegExp(`${ENUM}\\s+${ENUM}$`).test(s)) d.unparsed.push({ page, text: s });
+    }
+    return d;
+  },
+};
+
+// ---------- Elementar Analysensysteme GmbH: "Order" (bloques por ítem; números 1,234.50) ----------
+const EL_MONEY = "-?\\d[\\d,]*\\.\\d{2}";
+export const elementar = {
+  id: "elementar", name: "Elementar Analysensysteme GmbH",
+  matches: (L) => { const h = L.slice(0, 40).join("\n"); return /Elementar Analysensysteme/i.test(h) && /Reference Number/i.test(h); },
+  parse(L, pages) {
+    const d = newDoc("supplier", this.id, { supplierName: "Elementar Analysensysteme GmbH", pages });
+    let page = 1, cur = null, n = 0, inCharges = false, done = false, m;
+    for (const raw of L) {
+      if ((m = raw.match(PAGE))) { page = +m[1] + 1; continue; }
+      const s = raw.trim(); if (!s || done) continue;
+      if (!d.number && (m = s.match(/^Number\s+(\d+)/))) d.number = m[1];
+      if (!d.date && (m = s.match(/(?:^|\s)Date\s+([A-Z][a-z]{2} \d{1,2}, \d{4})/))) d.date = m[1];
+      if ((m = s.match(/^Reference Number\s+(\S+)/))) d.relatedPo = m[1];
+      if ((m = s.match(new RegExp(`^Sum of positions\\s+(${EL_MONEY})\\s+([A-Z]{3})$`)))) { d.declaredTotal = toCents(m[1], "."); d.currency = m[2]; cur = null; inCharges = true; continue; }
+      if ((m = s.match(new RegExp(`^(Net Value|Final amount)\\s+(${EL_MONEY})\\s+[A-Z]{3}$`)))) { d.documentTotal = toCents(m[2], "."); inCharges = false; if (m[1] === "Final amount") done = true; continue; }
+      if (inCharges && (m = s.match(new RegExp(`^(.+?)\\s+(${EL_MONEY})\\s+[A-Z]{3}$`)))) { d.extraCharges.push({ label: m[1].trim(), amount: toCents(m[2], ".") }); continue; }
+      if ((m = s.match(/^(\d+)\s+Material:\s*(\S+)\s*(.*)$/))) {
+        cur = line({ lineNo: ++n, reference: m[2], description: m[3].trim(), raw: s, page });
+        d.lines.push(cur); continue;
+      }
+      if (!cur) continue;
+      if ((m = s.match(/^Quantity:\s*([\d.,]+)\s*([A-Za-z]+)/))) { cur.quantity = toQty(m[1], "."); continue; }
+      if ((m = s.match(new RegExp(`^Item Value\\s+(${EL_MONEY})\\s+([A-Z]{3})\\s+pro\\s+([\\d.,]+)\\s*[A-Za-z]*\\s+(${EL_MONEY})\\s+[A-Z]{3}$`)))) {
+        d.currency ||= m[2]; cur.unitPrice = Math.round(toCents(m[1], ".") / (parseFloat(m[3]) || 1)); cur.total = toCents(m[4], "."); cur.raw += " | " + s; continue;
+      }
+      if (/^(HS Code|Price:)/.test(s)) continue;
+      if (/^(Discount|Surcharge|Rebate|Freight|Condition)/i.test(s)) { d.unparsed.push({ page, text: s }); continue; }   // condición de precio no contemplada
+      cur.description = (cur.description + " " + s).trim();
+    }
+    return d;
+  },
+};
+
+// ---------- Stakpure: "Order confirmation" (números 1.234,50; "less 40,00 %" en línea aparte) ----------
+const ST_LINE = /^(\d+)\s+(\S+)\s+(.*?)\s*(\d{2}\.\d{2}\.\d{4})\s+([\d.]*\d(?:,\d+)?)\s*([A-Za-z]+)\s+([\d.]*\d,\d{2})\s+([\d.]*\d,\d{2})$/;
+export const stakpure = {
+  id: "stakpure", name: "Stakpure GmbH",
+  matches: (L) => { const h = L.slice(0, 30).join("\n"); return /stakpure/i.test(h) && /Order confirmation/i.test(h) && /Article no\./i.test(h); },
+  parse(L, pages) {
+    const d = newDoc("supplier", this.id, { supplierName: "Stakpure GmbH", pages });
+    let page = 1, cur = null, n = 0, inTable = false, done = false, m;
+    for (const raw of L) {
+      if ((m = raw.match(PAGE))) { page = +m[1] + 1; continue; }
+      const s = raw.trim(); if (!s || done) continue;
+      if (!d.number && (m = s.match(/^Document number\s+(\S+)/))) d.number = m[1];
+      if (!d.date && (m = s.match(/(?:^|\s)Date\s+(\d{2}\.\d{2}\.\d{4})$/))) d.date = m[1];
+      if ((m = s.match(/Your receipt\s+(\S+)/))) d.relatedPo = m[1];
+      if (/^Pos\.\s+Article no\./i.test(s)) { inTable = true; continue; }
+      if ((m = s.match(/^Sub-total\s+([A-Z]{3})\s+([\d.]*\d,\d{2})$/))) { d.currency = m[1]; d.declaredTotal = toCents(m[2], ","); inTable = false; cur = null; continue; }
+      if ((m = s.match(/^Total\s+([A-Z]{3})\s+([\d.]*\d,\d{2})$/))) { d.documentTotal = toCents(m[2], ","); done = true; continue; }
+      if (!inTable) continue;
+      let disc = s.match(/(?:^|\s)less\s+([\d.,]+)\s*%$/);
+      let body = disc ? s.slice(0, disc.index).trim() : s;
+      if (disc && cur) cur.discountPct = parseFloat(disc[1].replace(",", "."));
+      if ((m = body.match(ST_LINE))) {
+        cur = line({ lineNo: ++n, reference: m[2], description: m[3].trim(), quantity: toQty(m[5], ","), unitPrice: toCents(m[7], ","), total: toCents(m[8], ","), deliveryDate: m[4], raw: s, page });
+        d.lines.push(cur); continue;
+      }
+      if (!cur || /^Weight:/i.test(body)) continue;
+      if (body) cur.description = (cur.description + " " + body).trim();     // descripción que continúa en varias líneas
+    }
+    return d;
+  },
+};
+
+export const SUPPLIER_PARSERS = [metrohm, buchi, erweka, elementar, stakpure];
 
 export function parseDocument(lines, pages, kind) {
   if (kind === "po") {

@@ -14,9 +14,9 @@ npm ci
 npm test                     # lectura, cruce, esquema JSON y Excel
 python3 -m http.server 8080  # o: npx serve .   → abrir http://localhost:8080
 ```
-Las pruebas que leen PDF reales (`tests/fixtures/po_888_metrohm.pdf`, `sup_metrohm.pdf`, `po_904_buchi.pdf`, `sup_buchi.pdf`) se
+Las pruebas que leen PDF reales (`tests/fixtures/`: `po_888_metrohm`, `sup_metrohm`, `po_904_buchi`, `sup_buchi`, `sup_erweka`, `sup_elementar`, `sup_stakpure`, todos `.pdf`) se
 **omiten** si esos archivos no están: son documentos comerciales y por eso no se suben al repositorio (`.gitignore`).
-Copie los 4 PDF a `tests/fixtures/` para correr la suite completa en su equipo.
+Copie los 7 PDF a `tests/fixtures/` para correr la suite completa en su equipo.
 
 (No abra `index.html` con doble clic: los módulos JS requieren http.)
 
@@ -65,6 +65,17 @@ validan cada salida contra él. Bloques: `purchase_order`, `supplier_confirmatio
   Cloudflare Access, o GitHub Pages privado (requiere GitHub Enterprise Cloud). Si necesitan histórico compartido y
   roles por usuario, hace falta un backend (la versión con servidor fue entregada aparte).
 * Sin CDNs: pdf.js y ExcelJS están versionados en `vendor/` (ver `scripts/vendor.mjs`).
+
+## Proveedores soportados
+| Proveedor | Formato | Particularidades |
+|---|---|---|
+| Metrohm AG | *Order Confirmation* | Total de línea ya con descuento (−40 %); consolida líneas repetidas de la OC; cargo de embalaje fuera de líneas; avisos de retraso de entrega |
+| BÜCHI Labortechnik AG | *Order confirmation* | Descripción en varias líneas; líneas *Carry Forward* entre páginas |
+| ERWEKA GmbH | *Order confirmation* | EUR; fecha *Ready for dispatch* como fecha de entrega |
+| Elementar Analysensysteme GmbH | *Order* | Un bloque por ítem (`Material:`); precio «por 1 PC»; cargos extra (embalaje, mercancía peligrosa) fuera de líneas; términos legales en páginas 2-3 se ignoran |
+| Stakpure | *Order confirmation* | Decimales con coma; descuento «less 40,00 %» en línea aparte; descripción en varias líneas |
+
+El nº de OC que cita el proveedor se compara contra la OC cargada aunque venga en otro formato (`COC 888`, `COC-895`, `COC-00000865`).
 
 ## Agregar un proveedor nuevo
 En `js/parsers.js`, crear un objeto `{ id, name, matches(lines), parse(lines, pages) }` (ver `metrohm`/`buchi`) y añadirlo a
